@@ -10,39 +10,67 @@ admin.initializeApp(functions.config().firebase);
 //  response.send("Hello from Firebase!");
 // });
 
-exports.makeNewEvent = functions.database.ref('/tmp/event/{uId}')
-    .onWrite(event => {
-      // get event_ID
-      var event_id = 0;
-      if (!event.data.child('event_id').exists()) {
-        admin.database().ref('events/id').once('value').then(function(snapshot) {
-          event_id = snapshot.val();
-          event.data.ref.child('event_id').set(event_id);
-          admin.database().ref('events/id').set(event_id + 1);
-        });
-        return 2;
-      } else {
-        event_id = event.data.child('event_id').val();
-      }
+exports.postEvent = functions.https.onRequest((req, res) => {
+  if (req.method != 'POST' || req.get('content-type') != 'application/json') {
+    res.status(400).send('invalid request');
+    return;
+  }
 
-      // set values
-      if (event.data.hasChildren()) {
-        var isUpdated = false;
-
-        event.data.forEach((eventSnap) => {
-          if (eventSnap.exists()) {
-            if (eventSnap.key == 'event_id') {
-              return;
-            }
-            isUpdated = true;
-            const new_val = eventSnap.val();
-            console.log('set ' + eventSnap.key, event.params.uId, new_val);
-            admin.database().ref('events/' + event_id).child(eventSnap.key).set(new_val);
-          }
-        });
-        if (isUpdated) {
-          admin.database().ref('events/' + event_id).child('author').set(event.params.uId);
+  // uid のチェック
+  var uid = req.body.uid;
+  if (uid == null || uid == '') {
+    res.status(400).send('please set your id');
+    return;
+  } else {
+    admin.auth().getUser(uid)
+      .then(function(userRecord) {
+        // 空チェック
+        var name = req.body.name;
+        var text = req.body.text;
+        var address = req.body.address;
+        var start_datetime = req.body.start_datetime;
+        var end_datetime = req.body.end_datetime;
+        var url = req.body.url;
+        if (name == null || name == '') {
+          res.status(400).send('please set event\'s name');
+          return;
         }
-      }
-      return 1;
+        if (text == null || text == '') {
+          res.status(400).send('please set event\'s text');
+          return;
+        }
+        if (address == null || address == '') {
+          res.status(400).send('please set event\'s address');
+          return;
+        }
+        if (start_datetime == null || start_datetime == '') {
+          res.status(400).send('please set event\'s start_datetime');
+          return;
+        }
+        if (end_datetime == null || end_datetime == '') {
+          res.status(400).send('please set event\'s end_datetime');
+          return;
+        }
+        if (url == null) {
+          url = '';
+        }
+
+        var eventListRef = admin.database().ref('events');
+        var newEventRef = eventListRef.push();
+        newEventRef.set({
+          'author': uid,
+          'name': name,
+          'text': text,
+          'address': address,
+          'start_datetime': start_datetime,
+          'end_datetime': end_datetime,
+          'url': url
+        });
+
+        res.status(200).send('success');
+      })
+      .catch(function(error) {
+        res.status(400).send('invalid user-id');
     });
+  }
+});
